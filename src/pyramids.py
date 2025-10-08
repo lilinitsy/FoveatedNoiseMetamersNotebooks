@@ -36,8 +36,9 @@ def make_gaussian_pyramid(image: np.ndarray, level: int) -> list[np.ndarray]:
 	return pyramid
 
 
-def make_laplacian_pyramid(image: np.ndarray, level: int) -> list[np.ndarray]:
-	gaussian_pyramid = make_gaussian_pyramid(image, level)
+def make_laplacian_pyramid(image: np.ndarray, level: int, gaussian_pyramid = None) -> list[np.ndarray]:
+	if gaussian_pyramid == None:
+		gaussian_pyramid = make_gaussian_pyramid(image, level)
 	laplacian_pyramid = [None] * level
 
 	# The final level is a gaussian pyramid

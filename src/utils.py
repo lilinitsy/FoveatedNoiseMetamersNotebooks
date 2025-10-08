@@ -38,4 +38,15 @@ def display_image(image: np.ndarray, title: str = "Image") -> None:
 	plt.title(title)
 	plt.axis("off")
 	plt.show()
+
+
+
+# Chose pretty random params for now. Pick them based on screen later.
+def pixels_per_degree(dpi: float, viewing_distance_m: float) -> float:
+	deg_rad = np.deg2rad(1.0)
+	size_m = 2.0 * viewing_distance_m * np.tan(deg_rad / 2.0)
+	px_per_m = dpi / 25.4 * 1000.0 / 1000.0 * 25.4 * 39.37007874
+	px_per_m = dpi / 0.0254
+	return px_per_m * size_m
+
 	

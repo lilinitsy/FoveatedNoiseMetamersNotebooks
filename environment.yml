@@ -1,4 +1,4 @@
-name: myproj
+name: foveatednoisemetamers
 channels:
   - conda-forge
 dependencies:
