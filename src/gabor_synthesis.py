@@ -30,7 +30,7 @@ def estimate_orientation(image_rgb):
 
 
 def choose_laplacian_level_from_sigma(sigma_pix, a = 0.25):
-    with np.errstate(divide='ignore'):
+    with np.errstate(divide = 'ignore'):
         sigma_f = 1.0 / (2.0*np.pi*np.maximum(1e-6, sigma_pix))
     f_c = np.sqrt(-np.log(a)) / (np.pi*np.maximum(1e-6, sigma_pix))
     l_a = -np.log2(np.maximum(1e-6, f_c)) - 0.5
