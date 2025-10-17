@@ -10,3 +10,4 @@ dependencies:
   - opencv
   - ipykernel
   - pip
+  - scipy
