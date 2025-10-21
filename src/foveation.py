@@ -17,6 +17,7 @@ from src.gabor_synthesis import (
 
 from src.bluenoise import (
 	bandlimited_blue_noise,
+	compute_orientation_field,
 )
 
 
@@ -156,8 +157,10 @@ def generate_blue_noise_enhanced_image(
 	fe = 0.2,
 	s_k = 20.0,
 	r_px = 12,
-	sigma_blob = 0.5, # Gaussian blob that is splatted at each poisson point.
-	seed = 0
+	sigma_blob = 0.5,
+	seed = 0,
+	rho_min = 1.0,
+	rho_max = 3.0
 ):
 	img = load_image(path, grayscale = False, as_float = True)
 	h, w = img.shape[:2]
@@ -167,32 +170,24 @@ def generate_blue_noise_enhanced_image(
 	ppd = pixels_per_degree(dpi, viewing_distance_m)
 	sigma_map = radial_sigma_map(h, w, gaze_xy, ppd, blur_rate_arcmin_per_degree)
 	foveated_image = foveate_image(img, sigma_map)
-
+	theta_map, coherency_map = compute_orientation_field(foveated_image, sigma_smooth = 1.0)
 	wgate = smoothstep(sigma_map, 0.5, 2.0)
+	noise_bn = bandlimited_blue_noise(h, w, sigma_map, levels = num_levels, r_px = r_px, seed = seed, sigma_blob = sigma_blob, theta_map = theta_map, coherency_map = coherency_map, rho_min = rho_min, rho_max = rho_max)
 
-	# Generate band-limited blue noise (just the noise characteristic)
-	noise_bn = bandlimited_blue_noise(h, w, sigma_map, levels = num_levels, 
-										r_px = r_px, seed = seed, sigma_blob = sigma_blob)
-
-	# Get amplitude from the IMAGE's Laplacian pyramid (not the noise)
 	G = make_gaussian_pyramid(img, num_levels)
 	L = make_laplacian_pyramid(img, num_levels, gaussian_pyramid = G)
 	l_a = choose_laplacian_level_from_sigma(sigma_map)
+
 	amp = amplitude_from_laplacian(L, l_a, s_k = s_k)
-
-	# Scale noise by amplitude AND gate
-	noise = noise_bn * amp * wgate * 3.0  # <-- Apply wgate here
-	#noise = noise_bn * wgate
-
-	# Contrast enhancement (also gated)
+	noise = noise_bn * amp * wgate
+	
 	ce_global = contrast_enhance(foveated_image, fe = fe)
 	ce = (1.0 - wgate)[..., None] * foveated_image + wgate[..., None] * ce_global
-
 	Y  = 0.2126 * ce[..., 2] + 0.7152 * ce[..., 1] + 0.0722 * ce[..., 0]
 	Yn = np.clip(Y + noise, 0.0, 1.0)
-
 	eps = 1e-6
 	scale = ((Yn + eps) / (Y + eps))[..., None]
+	
 	final_enhanced_image = np.clip(ce * scale, 0.0, 1.0)
-
+	
 	return final_enhanced_image, foveated_image, sigma_map, noise, noise_bn, amp
