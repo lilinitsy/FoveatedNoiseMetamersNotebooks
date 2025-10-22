@@ -56,17 +56,25 @@ def blue_noise_field_from_poisson_points2(height, width, r_px = 12, seed = 0, si
 	points = poisson_disk_points(height, width, r_px, seed)
 	field = np.zeros((height, width), np.float32)
 	kappa = 1.6
+
 	for (x, y) in points:
 		(xi, yi) = int(round(x)), int(round(y))
 		if theta_map is None:
 			theta = 0.0
 			coh = 0.0
-		else:
+
+		# Look up larger values from coherency map
+		else: 
 			yi_clamp = int(np.clip(yi, 0, height - 1))
 			xi_clamp = int(np.clip(xi, 0, width - 1))
 			theta = float(theta_map[yi_clamp, xi_clamp])
 			coh = float(coherency_map[yi_clamp, xi_clamp])
+
+		# coherency to anisotropy
+		# flat regions: rho ~1; rho > 1, more elongated
 		rho = rho_min + (rho_max - rho_min) * coh
+
+		# Set major and minor axis of the kernel
 		sigma_minor = float(sigma_blob)
 		sigma_major = rho * sigma_minor
 		sigma1_u = sigma_major
@@ -74,30 +82,41 @@ def blue_noise_field_from_poisson_points2(height, width, r_px = 12, seed = 0, si
 		sigma2_u = kappa * sigma1_u
 		sigma2_v = kappa * sigma1_v
 		s_max = max(sigma2_u, sigma2_v)
+
 		kernel_size = int(max(7, int(6 * s_max) + 1)) | 1
 		half = kernel_size // 2
+
+		# Make grid
 		yy, xx = np.mgrid[-half:half+1, -half:half+1].astype(np.float32)
+
 		ct = np.cos(-theta)
 		st = np.sin(-theta)
+
+		# u -> moves along across grid, v -> cut across grid
 		u =  ct * xx - st * yy
 		v =  st * xx + ct * yy
-		G1 = np.exp(-0.5 * ((u * u) / (sigma1_u * sigma1_u + 1e-12) + (v * v) / (sigma1_v * sigma1_v + 1e-12))).astype(np.float32)
-		G2 = np.exp(-0.5 * ((u * u) / (sigma2_u * sigma2_u + 1e-12) + (v * v) / (sigma2_v * sigma2_v + 1e-12))).astype(np.float32)
-		alpha = float(G1.sum()) / (float(G2.sum()) + 1e-12)
-		K = G1 - alpha * G2
+
+		# oriented gabor (cosine-modulated Gaussian), enforced zero-mean/energy
+		G = np.exp(-0.5 * ((u * u) / (sigma1_u * sigma1_u + 1e-12) + (v * v) / (sigma1_v * sigma1_v + 1e-12))).astype(np.float32)
+		freq = 1.0 / (4.0 * (sigma1_v + 1e-12))
+		K = (G * np.cos(2.0 * np.pi * freq * u)).astype(np.float32)
 		K -= K.mean()
 		K /= (np.sqrt((K * K).sum()) + 1e-12)
+
 		(y0, y1) = max(0, yi - half), min(height, yi + half + 1)
 		(x0, x1) = max(0, xi - half), min(width, xi + half + 1)
 		(by0, by1) = half - (yi - y0), half + (y1 - yi) - 1
 		(bx0, bx1) = half - (xi - x0), half + (x1 - xi) - 1
+
 		Kc = K[by0:by1 + 1, bx0:bx1 + 1]
 		Kc = Kc - Kc.mean()
 		Kc /= (np.sqrt((Kc * Kc).sum()) + 1e-12)
 		field[y0:y1, x0:x1] += Kc
+
 	field -= field.mean()
 	field /= (field.std() + 1e-6)
 	return field
+
 
 
 
@@ -124,7 +143,8 @@ def compute_orientation_field(img, sigma_smooth = 1.0, eps = 1e-6):
 	return theta.astype(np.float32), coherency
 
 
-
+# theta: local orientation
+# coherency: Directionality of the structure
 def bandlimited_blue_noise(height, width, sigma_map, levels = 5, r_px = 12, seed = 0, sigma_blob = 0.5, theta_map = None, coherency_map = None, rho_min = 1.0, rho_max = 3.0):
 	field = blue_noise_field_from_poisson_points2(height, width, r_px = r_px, seed = seed, sigma_blob = sigma_blob, theta_map = theta_map, coherency_map = coherency_map, rho_min = rho_min, rho_max = rho_max)
 	
