@@ -69,11 +69,11 @@ def L_pyr_list_to_gray(level_image, H, W, level_idx):
 
 
 
-def gabor_kernel(freq_cpp, theta, sigma_pix_env=8.0, gamma=1.0):
+def gabor_kernel(freq_cpp, theta, sigma_pix_env = 8.0, gamma = 1.0, psi = 0.0):
 	f = max(1e-4, float(freq_cpp))
 	lam = 1.0 / f
-	ksize = int(max(7, int(6*sigma_pix_env)|1))
-	return cv2.getGaborKernel((ksize, ksize), sigma_pix_env, float(theta), lam, gamma, psi=0, ktype=cv2.CV_32F)
+	ksize = int(max(7, int(6 * sigma_pix_env) | 1))
+	return cv2.getGaborKernel((ksize, ksize), sigma_pix_env, float(theta), lam, gamma, psi = float(psi), ktype = cv2.CV_32F)
 
 def synthesize_gabor_noise(height, width, F_L, F_H, amp, theta, cells=32, impulses_per_cell=12, seed=1337):
 	rng = np.random.default_rng(seed)

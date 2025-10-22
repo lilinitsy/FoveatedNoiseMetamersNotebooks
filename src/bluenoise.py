@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from scipy.stats import qmc
 
-from src.gabor_synthesis import	choose_laplacian_level_from_sigma
+from src.gabor_synthesis import	choose_laplacian_level_from_sigma, gabor_kernel
 from src.pyramids import make_gaussian_pyramid, make_laplacian_pyramid
 
 
@@ -193,3 +193,47 @@ def smoothstep(x, lo, hi):
 
 
 
+def poisson_gabor_noise(height, width, F_L, F_H, theta_map, r_px = 12, seed = 0, sigma = 0.5):
+	points = poisson_disk_points(height, width, r_px, seed)
+	field = np.zeros((height, width), np.float32)
+	rng = np.random.default_rng(seed)
+
+	for (x, y) in points:
+		# Clamp points to be within image range
+		yi = int(np.clip(x, 0, height - 1))
+		xi = int(np.clip(y, 0, width - 1))
+
+		th = float(theta_map[yi, xi]) # get local orientation from the theta map, to align the gabor impulse
+		fl = float(F_L[yi, xi]) if isinstance(F_L, np.ndarray) else float(F_L) # lower bound frequency (cpp)
+		fh = float(F_H[yi, xi]) if isinstance(F_H, np.ndarray) else float(F_H) # upper bound frequency (cpp)
+
+		if not (fl < fh):
+			continue
+
+		# log-uniform sample in [fl, fh]
+		fcpp = float(np.exp(rng.uniform(np.log(fl), np.log(fh))))
+		lam = 1.0 / max(1e-6, fcpp) # wavelength, avoid div by 0
+		sigma_env = float(sigma * lam) # sigma in pixels; 0.5 means 2sigma spans 1 each side?
+		psi = float(rng.uniform(0.0, 2.0 * np.pi)) # random phase, avoids aliasing and patterning
+
+		gabor = gabor_kernel(fcpp, th, sigma_pix_env = sigma_env, gamma = 1.0, psi = psi).astype(np.float32) # gabor kernel
+		gabor -= gabor.mean()
+		n = np.sqrt((gabor * gabor).sum()) + 1e-12
+		gabor /= n
+
+		gabor_height, gabor_width = gabor.shape
+		gabor_halfheight, gabor_halfwidth = gabor_height // 2, gabor_width // 2
+		y0, y1 = max(0, yi - gabor_halfheight), min(height, yi + gabor_halfheight + 1)
+		x0, x1 = max(0, xi - gabor_halfwidth), min(width,  xi + gabor_halfwidth + 1)
+		gabor_kernel_y0, gabor_kernel_y1 = gabor_halfheight - (yi - y0), gabor_halfheight + (y1 - yi) - 1
+		gabor_kernel_x0, gabor_kernel_x1 = gabor_halfwidth - (xi - x0), gabor_halfwidth + (x1 - xi) - 1
+
+		kernel_vals = gabor[gabor_kernel_y0:gabor_kernel_y1 + 1, gabor_kernel_x0:gabor_kernel_x1 + 1]
+		kernel_vals = kernel_vals - kernel_vals.mean()
+		kernel_vals /= (np.sqrt((kernel_vals * kernel_vals).sum()) + 1e-12)
+
+		field[y0:y1, x0:x1] += kernel_vals
+
+	field -= field.mean()
+	field /= (field.std() + 1e-6)
+	return field

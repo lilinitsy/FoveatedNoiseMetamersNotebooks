@@ -18,6 +18,7 @@ from src.gabor_synthesis import (
 from src.bluenoise import (
 	bandlimited_blue_noise,
 	compute_orientation_field,
+	poisson_gabor_noise
 )
 
 
@@ -92,12 +93,12 @@ def generate_gabor_enhanced_foveated_image(
 	foveated_image = foveate_image(image, sigma_map)
 
 	# pyramids
-	gaussian_pyramid = make_gaussian_pyramid(image, levels)
-	laplacian_pyramid = make_laplacian_pyramid(image, levels, gaussian_pyramid = gaussian_pyramid)
+	gaussian_pyramid = make_gaussian_pyramid(foveated_image, levels)
+	laplacian_pyramid = make_laplacian_pyramid(foveated_image, levels, gaussian_pyramid = gaussian_pyramid)
 
 	# frequency bounds & orientation
 	F_L, F_H = freq_bounds_cpp(sigma_map)  # F_H is scalar 0.5 inside if you kept that default
-	theta = estimate_orientation(image)
+	theta = estimate_orientation(foveated_image)
 
 	# amplitude from Laplacian bands
 	l_a = choose_laplacian_level_from_sigma(sigma_map)
@@ -124,8 +125,8 @@ def generate_gabor_enhanced_foveated_image(
 
 
 def display_foveated_results(final_enhanced_image, foveated_image, sigma_map):
-	def to_rgb(img):
-		return cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if (img.ndim == 3 and img.shape[2] == 3) else img
+	def to_rgb(image):
+		return cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if (image.ndim == 3 and image.shape[2] == 3) else image
 
 	fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
@@ -162,20 +163,20 @@ def generate_blue_noise_enhanced_image(
 	rho_min = 1.0,
 	rho_max = 3.0
 ):
-	img = load_image(path, grayscale = False, as_float = True)
-	h, w = img.shape[:2]
+	image = load_image(path, grayscale = False, as_float = True)
+	h, w = image.shape[:2]
 	if gaze_xy is None:
 		gaze_xy = (w // 2, h // 2)
 
 	ppd = pixels_per_degree(dpi, viewing_distance_m)
 	sigma_map = radial_sigma_map(h, w, gaze_xy, ppd, blur_rate_arcmin_per_degree)
-	foveated_image = foveate_image(img, sigma_map)
+	foveated_image = foveate_image(image, sigma_map)
 	theta_map, coherency_map = compute_orientation_field(foveated_image, sigma_smooth = 1.0)
 	wgate = smoothstep(sigma_map, 0.5, 2.0)
 	noise_bn = bandlimited_blue_noise(h, w, sigma_map, levels = num_levels, r_px = r_px, seed = seed, sigma_blob = sigma_blob, theta_map = theta_map, coherency_map = coherency_map, rho_min = rho_min, rho_max = rho_max)
 
-	G = make_gaussian_pyramid(img, num_levels)
-	L = make_laplacian_pyramid(img, num_levels, gaussian_pyramid = G)
+	G = make_gaussian_pyramid(foveated_image, num_levels)
+	L = make_laplacian_pyramid(foveated_image, num_levels, gaussian_pyramid = G)
 	l_a = choose_laplacian_level_from_sigma(sigma_map)
 
 	amp = amplitude_from_laplacian(L, l_a, s_k = s_k)
@@ -190,4 +191,59 @@ def generate_blue_noise_enhanced_image(
 	
 	final_enhanced_image = np.clip(ce * scale, 0.0, 1.0)
 	
+	return final_enhanced_image, foveated_image, sigma_map, noise, noise_bn, amp
+
+
+
+def synthesize_poisson_gabor(
+	path: str,
+	num_levels = 5,
+	gaze_xy = None,
+	dpi = 110.0,
+	viewing_distance_m = 0.71,
+	blur_rate_arcmin_per_degree = 0.34,
+	r_px = 12,
+	seed = 0,
+	sigma_env_ratio = 0.5,
+	fe = 0.2,
+	s_k = 20.0,
+):
+	image = load_image(path, grayscale = False, as_float = True)
+	h, w = image.shape[:2]
+	if gaze_xy is None:
+		gaze_xy = (w // 2, h // 2)
+
+	ppd = pixels_per_degree(dpi, viewing_distance_m)
+	sigma_map = radial_sigma_map(h, w, gaze_xy, ppd, blur_rate_arcmin_per_degree)
+	wgate = smoothstep(sigma_map, 0.5, 2.0)
+	foveated_image = foveate_image(image, sigma_map)
+
+	theta_map = estimate_orientation(foveated_image)
+
+	# freq bounds per pixel (cycles/pixel)
+	F_L, F_H = freq_bounds_cpp(sigma_map)
+
+	# oriented Gabor field at Poisson points (already band-biased by freq choice)
+	noise_bn = poisson_gabor_noise(h, w, F_L, F_H, theta_map, r_px = r_px, seed = seed, sigma = sigma_env_ratio)
+
+	# amplitude from Laplacian pyramid of the image
+	G = make_gaussian_pyramid(foveated_image, num_levels)
+	L = make_laplacian_pyramid(foveated_image, num_levels, gaussian_pyramid = G)
+	l_a = choose_laplacian_level_from_sigma(sigma_map)
+	amp = amplitude_from_laplacian(L, l_a, s_k = s_k)
+
+	# gate and scale
+	noise = noise_bn * amp * wgate
+
+	# contrast enhance + luminance remap with bounded multiplicative scale
+	ce_global = contrast_enhance(foveated_image, fe = fe)
+	ce = (1.0 - wgate)[..., None] * foveated_image + wgate[..., None] * ce_global
+
+	Y  = 0.2126 * ce[..., 2] + 0.7152 * ce[..., 1] + 0.0722 * ce[..., 0]
+	Yn = np.clip(Y + noise, 0.0, 1.0)
+
+	eps = 1e-6
+	scale = ((Yn + eps) / (Y + eps))[..., None]
+	final_enhanced_image = np.clip(ce * scale, 0.0, 1.0)
+
 	return final_enhanced_image, foveated_image, sigma_map, noise, noise_bn, amp
