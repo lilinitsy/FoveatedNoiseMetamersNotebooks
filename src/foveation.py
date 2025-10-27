@@ -182,7 +182,9 @@ def generate_blue_noise_enhanced_image(
 	amp = amplitude_from_laplacian(L, l_a, s_k = s_k)
 	noise = noise_bn * amp * wgate
 	
-	ce_global = contrast_enhance(foveated_image, fe = fe)
+	# turn off contrast enhance
+	ce_global = foveated_image
+	#ce_global = contrast_enhance(foveated_image, fe = fe)
 	ce = (1.0 - wgate)[..., None] * foveated_image + wgate[..., None] * ce_global
 	Y  = 0.2126 * ce[..., 2] + 0.7152 * ce[..., 1] + 0.0722 * ce[..., 0]
 	Yn = np.clip(Y + noise, 0.0, 1.0)
@@ -236,7 +238,9 @@ def synthesize_poisson_gabor(
 	noise = noise_bn * amp * wgate
 
 	# contrast enhance + luminance remap with bounded multiplicative scale
-	ce_global = contrast_enhance(foveated_image, fe = fe)
+	# turn off contrast enhance
+	ce_global = foveated_image
+	#ce_global = contrast_enhance(foveated_image, fe = fe)
 	ce = (1.0 - wgate)[..., None] * foveated_image + wgate[..., None] * ce_global
 
 	Y  = 0.2126 * ce[..., 2] + 0.7152 * ce[..., 1] + 0.0722 * ce[..., 0]

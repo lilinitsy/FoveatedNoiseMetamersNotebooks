@@ -200,8 +200,8 @@ def poisson_gabor_noise(height, width, F_L, F_H, theta_map, r_px = 12, seed = 0,
 
 	for (x, y) in points:
 		# Clamp points to be within image range
-		yi = int(np.clip(x, 0, height - 1))
-		xi = int(np.clip(y, 0, width - 1))
+		yi = int(np.clip(y, 0, height - 1))
+		xi = int(np.clip(x, 0, width - 1))
 
 		theta = float(theta_map[yi, xi]) # get local orientation from the theta map, to align the gabor impulse
 		fl = float(F_L[yi, xi]) if isinstance(F_L, np.ndarray) else float(F_L) # lower bound frequency (cpp)
