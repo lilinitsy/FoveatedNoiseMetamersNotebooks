@@ -43,7 +43,7 @@ def blue_noise_field_from_poisson_points(height, width, r_px = 12, seed = 0, sig
 		(by0, by1) = half_y - (yi - y0), half_y + (y1 - yi) - 1
 		(bx0, bx1) = half_x - (xi - x0), half_x + (x1 - xi) - 1
 		field[y0:y1, x0:x1] += gaussian_blob[by0:by1 + 1, bx0:bx1 + 1]
-	field -= field.mean()
+	field -= field.mean() # shift back to center
 	field /= (field.std() + 1e-6)
 	
 	field_norm = (field - field.min()) / (field.max() - field.min())
@@ -203,7 +203,7 @@ def poisson_gabor_noise(height, width, F_L, F_H, theta_map, r_px = 12, seed = 0,
 		yi = int(np.clip(x, 0, height - 1))
 		xi = int(np.clip(y, 0, width - 1))
 
-		th = float(theta_map[yi, xi]) # get local orientation from the theta map, to align the gabor impulse
+		theta = float(theta_map[yi, xi]) # get local orientation from the theta map, to align the gabor impulse
 		fl = float(F_L[yi, xi]) if isinstance(F_L, np.ndarray) else float(F_L) # lower bound frequency (cpp)
 		fh = float(F_H[yi, xi]) if isinstance(F_H, np.ndarray) else float(F_H) # upper bound frequency (cpp)
 
@@ -216,7 +216,7 @@ def poisson_gabor_noise(height, width, F_L, F_H, theta_map, r_px = 12, seed = 0,
 		sigma_env = float(sigma * lam) # sigma in pixels; 0.5 means 2sigma spans 1 each side?
 		psi = float(rng.uniform(0.0, 2.0 * np.pi)) # random phase, avoids aliasing and patterning
 
-		gabor = gabor_kernel(fcpp, th, sigma_pix_env = sigma_env, gamma = 1.0, psi = psi).astype(np.float32) # gabor kernel
+		gabor = gabor_kernel(fcpp, theta, sigma_pix_env = sigma_env, gamma = 1.0, psi = psi).astype(np.float32) # gabor kernel
 		gabor -= gabor.mean()
 		n = np.sqrt((gabor * gabor).sum()) + 1e-12
 		gabor /= n
@@ -224,7 +224,7 @@ def poisson_gabor_noise(height, width, F_L, F_H, theta_map, r_px = 12, seed = 0,
 		gabor_height, gabor_width = gabor.shape
 		gabor_halfheight, gabor_halfwidth = gabor_height // 2, gabor_width // 2
 		y0, y1 = max(0, yi - gabor_halfheight), min(height, yi + gabor_halfheight + 1)
-		x0, x1 = max(0, xi - gabor_halfwidth), min(width,  xi + gabor_halfwidth + 1)
+		x0, x1 = max(0, xi - gabor_halfwidth), min(width, xi + gabor_halfwidth + 1)
 		gabor_kernel_y0, gabor_kernel_y1 = gabor_halfheight - (yi - y0), gabor_halfheight + (y1 - yi) - 1
 		gabor_kernel_x0, gabor_kernel_x1 = gabor_halfwidth - (xi - x0), gabor_halfwidth + (x1 - xi) - 1
 
